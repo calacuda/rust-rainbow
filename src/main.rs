@@ -135,25 +135,46 @@ fn get_args() -> ArgMatches {
                 .takes_value(false)
                 .required(false),
         )
+        .arg(
+            Arg::new("line-buffer")
+                .short('b')
+                .long("line-buffer")
+                .help(
+                    "the size of the line buffer, bugger numbers are faster. \
+                    however when increasing the line buffer size, one will reach \
+                    a point of diminishing returns. the max value is a unisgned \
+                    16-bit int.",
+                )
+                .takes_value(true)
+                .required(false)
+                .default_value("50"),
+        )
         .get_matches();
 }
 
 fn file_table(algos: &HashSet<&str>, base_dir: &str, args: &ArgMatches) {
+    let line_buf = match args.get_one::<String>("line-buffer") {
+        Some(num) => match num.to_owned().parse::<u16>() {
+            Ok(n) => n,
+            Err(_) => {
+                println!("[Error] :  could not interpret \"{}\" as an u16!", num);
+                process::exit(1);
+            }
+        },
+        None => 50,
+    };
+
     for algo in algos {
-        println!("[LOG] :  hash algorithm :  {}", &algo);
+        println!("hash algorithm :  {}", &algo);
 
         //makes the table if it doesn't exist.
         let db_fname = format!("{}/{}_table.txt", base_dir, algo);
 
         // if the database already exists LEAVE IT ALONE! DON'T DELETE IT,
-        // move on to next algorithm
         if Path::new(&db_fname).exists() {
+            // move on to next algorithm
             continue;
         }
-
-        // match create_dir(&current_dir) {
-        //     _ => {}
-        // };
 
         // read file into buffer
         let file = match File::open(args.get_one::<String>("wordlist").unwrap()) {
@@ -164,8 +185,7 @@ fn file_table(algos: &HashSet<&str>, base_dir: &str, args: &ArgMatches) {
             }
         };
 
-        let reader = BufReader::new(&file);
-        let mut i = 0;
+        let mut reader = BufReader::new(&file);
         match File::create(&db_fname) {
             Ok(f) => f,
             Err(_) => {
@@ -180,30 +200,44 @@ fn file_table(algos: &HashSet<&str>, base_dir: &str, args: &ArgMatches) {
             .expect(&format!("Unable to open file named: {}", &db_fname));
 
         // itterate over lines
-        for line in reader.lines() {
-            i += 1;
-            //make byte str of passwd
-            let (passwd_bytes, passwd) = match line {
-                Ok(word) => (word.clone().into_bytes(), word),
-                Err(_) => {
-                    // println!("failed to parse line {}", i);
-                    continue;
-                }
-            };
+        loop {
+            let mut write_buf: Vec<u8> = Vec::new();
+            let mut done: bool = false;
 
-            let hash_val = hash::hash(algo, &passwd_bytes);
+            for _ in 0..line_buf {
+                let mut line: Vec<u8> = Vec::new();
+                match reader.read_until('\n' as u8, &mut line) {
+                    Ok(num) => {
+                        if num == 0 {
+                            done = true;
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                };
 
-            // write to file
-            let line = &format!("{}:{}\n", hash_val, passwd);
-            match db_file.write_all(line.as_bytes()) {
+                let mut passwd_bytes = line.clone();
+
+                // if passwd_bytes.last() != Some(&('\n' as u8)) {
+                //     passwd_bytes.push('\n' as u8);
+                //     println!("pushing new line!");
+                //     // passwd_bytes.pop();
+                // }
+
+                let mut hash_pass: Vec<u8> = hash::hash(algo, &passwd_bytes).as_bytes().to_vec();
+
+                // save to write buffer
+                write_buf.append(&mut hash_pass);
+                write_buf.push(':' as u8);
+                write_buf.append(&mut passwd_bytes);
+            }
+            match db_file.write_all(&write_buf) {
                 Ok(_) => {}
-                Err(_) => println!(
-                    "couldn't write password to file\n{} : {}",
-                    passwd, &db_fname
-                ),
+                Err(_) => println!("[ERROR] :  couldn't write password to file: {}", &db_fname),
             };
-
-            // inc i
+            if done {
+                break;
+            }
         }
     }
 }
