@@ -10,4 +10,4 @@ md5 = "0.7.0"
 sha1 = "0.10.0"
 sha2 = "0.10.2"
 ntlm-hash = "*"  # can only handle passwords shorter then 32 cars long
-clap = "*"
+clap = "3.2.6"
