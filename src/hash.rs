@@ -38,7 +38,10 @@ fn hash_sha512(passwd: &Vec<u8>) -> String {
 
 fn hash_ntlm(passwd: &Vec<u8>) -> String {
     return if passwd.len() < 32 {
-        ntlm_hash(&String::from_utf8(passwd.to_owned()).unwrap())
+        match String::from_utf8(passwd.to_owned()) {
+            Ok(pass) => ntlm_hash(&pass),
+            Err(_) => "N/A".to_string(),
+        }
     } else {
         "N/A".to_string()
     };
