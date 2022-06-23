@@ -9,7 +9,7 @@ pub fn hash(func: &str, passwd: &Vec<u8>) -> String {
         "sha1" => hash_sha1(passwd),
         "sha256" => hash_sha256(passwd),
         "sha512" => hash_sha512(passwd),
-        "ntlm_v2" => hash_ntlm(passwd), // bug in module do not use untill updated.
+        "ntlm_v2" => hash_ntlm(passwd), // can only handle passwords shorter then 32 chars
         _ => panic!("how'd that get here, that hash funciton isn't implemented yet?"),
     };
 }
@@ -37,5 +37,9 @@ fn hash_sha512(passwd: &Vec<u8>) -> String {
 }
 
 fn hash_ntlm(passwd: &Vec<u8>) -> String {
-    return ntlm_hash(&String::from_utf8(passwd.to_owned()).expect(""));
+    return if passwd.len() < 32 {
+        ntlm_hash(&String::from_utf8(passwd.to_owned()).unwrap())
+    } else {
+        "N/A".to_string()
+    };
 }

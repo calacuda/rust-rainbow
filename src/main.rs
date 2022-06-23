@@ -1,22 +1,215 @@
 use clap::{App, Arg, ArgMatches};
+use std::collections::HashSet;
+use std::fs::OpenOptions;
 use std::fs::{create_dir, File};
-use std::io::prelude::*;
+use std::io::Write;
 use std::io::{BufRead, BufReader};
-// use std::path::Path;
+use std::path::Path;
+use std::process;
+// use std::io::prelude::*;
 
 mod hash;
 
 fn main() {
     let base_dir = "tables";
-    let algos = ["md5", "sha1", "sha256", "sha512"]; //, "ntlm_v2"];
     match create_dir(base_dir) {
         _ => {}
     };
-    // for algo in algos {
-    //     create_dir(format!("{}/{}_table", base_dir, algo));
-    // }
+
     let args = get_args();
 
+    match args.try_contains_id("list") {
+        Ok(is_there) => {
+            // println!("{:?}", args);
+            if is_there {
+                println!(
+                    "suported algorithms :  {}",
+                    args.get_one::<String>("positive_algols").unwrap(),
+                );
+                process::exit(0);
+            }
+        }
+        Err(e) => {
+            println!("{}", e)
+        }
+    }
+
+    let mut algos = args
+        .get_one::<String>("positive_algols")
+        .unwrap()
+        .split(",")
+        .collect::<HashSet<&str>>();
+
+    match args.get_one::<String>("negative_algols") {
+        Some(neg_algos) => {
+            for no_al in neg_algos.split(",") {
+                algos.remove(&no_al);
+            }
+        }
+        None => {}
+    }
+
+    match args.get_one::<String>("type").unwrap().as_str() {
+        "file" => {
+            println!("[LOG] :  making a file based database.");
+            file_table(&algos, &base_dir, &args);
+        }
+        "dir" => {
+            println!("[LOG] :  making a directory based database.");
+            dir_table(&algos, &base_dir, &args);
+        }
+        _ => {
+            println!(
+                "[ERROR] :  the \"type\" comand line argument can't be \"{}\", \
+                it can only be \"file\" or \"dir\"",
+                args.get_one::<String>("type").unwrap()
+            );
+            process::exit(1);
+        }
+    }
+
+    println!("I've finished computing, good luck, and happy password cracking!")
+}
+
+fn get_args() -> ArgMatches {
+    return App::new("rust-rainbow")
+        .version("0.0.1")
+        .author("Calacuda. <https://github.com/calacuda>")
+        .about("used to generate a rainbow table based on a wordlist")
+        .arg(
+            Arg::new("wordlist")
+                .short('w')
+                .long("wordlist")
+                .value_name("WORDLIST-FILE")
+                .help("The wordlist that will be used to generate the table.")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
+            Arg::new("type")
+                .short('t')
+                .long("type")
+                .value_name("TYPE")
+                .help(
+                    "The type of database to build. Options: file or dir, \
+                    (Default: file) the \"file\" option will output to a txt \
+                    file where each line is <HASH>:<PASSWORD>. The \"dir\" \
+                    option will build a directory structure in the format of, \
+                    tables/<ALGORITHM>_table/<HASH>, The contents of the file \
+                    <HASH> is the coresponding password. The file option takes \
+                    MUCH less space but is a slower search, the dir is a MUCH \
+                    larger table but gives faster searches. pick your poison.",
+                )
+                .takes_value(true)
+                .required(false)
+                .default_value("file"),
+        )
+        .arg(
+            Arg::new("positive_algols")
+                .short('a')
+                .long("algorithms")
+                .value_name("ALGORITHM_1,ALGORITHM_2")
+                .help(
+                    "a comma separated list of the algorithms to use. \
+                    (default is all: \"-a md5,sha1,sha256,sha512,ntlm_v2\")",
+                )
+                .takes_value(true)
+                .required(false)
+                .default_value("md5,sha1,sha256,sha512,ntlm_v2"),
+        )
+        .arg(
+            Arg::new("negative_algols")
+                .short('s')
+                .long("skip-algorithms")
+                .value_name("ALGORITHM_1,ALGORITHM_2")
+                .help("a comma separated list of the algorithms to not use.")
+                .takes_value(true)
+                .required(false), // .default_value(","),
+        )
+        .arg(
+            Arg::new("list")
+                .short('l')
+                .long("list")
+                .help("lists suported algorithms")
+                .exclusive(true)
+                .takes_value(false)
+                .required(false),
+        )
+        .get_matches();
+}
+
+fn file_table(algos: &HashSet<&str>, base_dir: &str, args: &ArgMatches) {
+    for algo in algos {
+        println!("[LOG] :  hash algorithm :  {}", &algo);
+
+        //makes the table if it doesn't exist.
+        let db_fname = format!("{}/{}_table.txt", base_dir, algo);
+
+        // if the database already exists LEAVE IT ALONE! DON'T DELETE IT,
+        // move on to next algorithm
+        if Path::new(&db_fname).exists() {
+            continue;
+        }
+
+        // match create_dir(&current_dir) {
+        //     _ => {}
+        // };
+
+        // read file into buffer
+        let file = match File::open(args.get_one::<String>("wordlist").unwrap()) {
+            Ok(file) => file,
+            Err(_) => {
+                println!("word list file not found in file system");
+                process::exit(1);
+            }
+        };
+
+        let reader = BufReader::new(&file);
+        let mut i = 0;
+        match File::create(&db_fname) {
+            Ok(f) => f,
+            Err(_) => {
+                println!("failed to make file: {}!", &db_fname);
+                continue;
+            }
+        };
+
+        let mut db_file = OpenOptions::new()
+            .append(true)
+            .open(&db_fname)
+            .expect(&format!("Unable to open file named: {}", &db_fname));
+
+        // itterate over lines
+        for line in reader.lines() {
+            i += 1;
+            //make byte str of passwd
+            let (passwd_bytes, passwd) = match line {
+                Ok(word) => (word.clone().into_bytes(), word),
+                Err(_) => {
+                    // println!("failed to parse line {}", i);
+                    continue;
+                }
+            };
+
+            let hash_val = hash::hash(algo, &passwd_bytes);
+
+            // write to file
+            let line = &format!("{}:{}\n", hash_val, passwd);
+            match db_file.write_all(line.as_bytes()) {
+                Ok(_) => {}
+                Err(_) => println!(
+                    "couldn't write password to file\n{} : {}",
+                    passwd, &db_fname
+                ),
+            };
+
+            // inc i
+        }
+    }
+}
+
+fn dir_table(algos: &HashSet<&str>, base_dir: &str, args: &ArgMatches) {
+    // do for once for each algorithm
     for algo in algos {
         //makes the table if it doesn't exist.
         let current_dir = format!("{}/{}_table", base_dir, algo);
@@ -27,26 +220,27 @@ fn main() {
         // read file into buffer
         let file = match File::open(args.get_one::<String>("wordlist").unwrap()) {
             Ok(file) => file,
-            Err(_) => panic!("word list file not found in file system"),
+            Err(_) => {
+                println!("word list file not found in file system");
+                process::exit(1);
+            }
         };
         let reader = BufReader::new(&file);
         println!("algorithm :  {}", &algo);
         let mut i = 1;
         // itterate over lines
         for line in reader.lines() {
-            // println!("{}: {:?}", i, line);
             let passwd = match line {
                 Ok(word) => word.into_bytes(),
                 Err(_) => {
                     println!("failed to parse line {}", i);
-                    break;
+                    continue;
                 }
             };
+
             let hash_val = hash::hash(algo, &passwd);
-            // println!("{:#?}", hash_val);
             // write to file
             let hash_fname = &format!("{}/{}", &current_dir, hash_val);
-            // let path = Path::new(&hash_fname);
 
             let mut hash_file = match File::create(hash_fname) {
                 Ok(f) => f,
@@ -62,21 +256,4 @@ fn main() {
             i += 1;
         }
     }
-}
-
-fn get_args() -> ArgMatches {
-    return App::new("rust-rainbow")
-        .version("0.0.1")
-        .author("Calacuda. <https://github.com/calacuda>")
-        .about("used to generate a rainbow table based on a wordlist")
-        .arg(
-            Arg::new("wordlist")
-                .short('w')
-                .long("wordlist")
-                .value_name("wordlist.txt")
-                .help("The wordlist that will be used to generate the table.")
-                .takes_value(true)
-                .required(true),
-        )
-        .get_matches();
 }
