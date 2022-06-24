@@ -10,3 +10,11 @@ $ grep PASSWORD-HASH tables/*
 ~~~
 
 this will make a directory called `tables` with a text file for each sported algorithm. you can then grep for the specific hash across all algorithms if you don't know the algorithm used or the specific table if you do know what algorithm was used to generate the hash.
+
+## supported algorithms:
+
+- md5
+- sha1
+- sha256
+- sha512
+- ntlm_v2
