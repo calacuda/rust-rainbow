@@ -11,11 +11,6 @@ use std::process;
 mod hash;
 
 fn main() {
-    let base_dir = "tables";
-    match create_dir(base_dir) {
-        _ => {}
-    };
-
     let args = get_args();
 
     match args.try_contains_id("list") {
@@ -33,6 +28,22 @@ fn main() {
             println!("{}", e)
         }
     }
+
+    let wordlist_f = Path::new(args.get_one::<String>("wordlist").unwrap());
+
+    if !wordlist_f.exists() {
+        println!("word list file not found in file system");
+        process::exit(1);
+    }
+
+    let base_dir = &format!(
+        "{}_tables",
+        wordlist_f.file_stem().unwrap().to_str().unwrap()
+    );
+
+    match create_dir(base_dir) {
+        _ => {}
+    };
 
     let mut algos = args
         .get_one::<String>("positive_algols")

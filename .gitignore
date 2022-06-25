@@ -12,6 +12,7 @@ Cargo.lock
 # Added by cargo
 /target
 /tables
+/*_tables
 
 # wordlists
 wordlist.txt
